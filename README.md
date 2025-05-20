@@ -12,6 +12,9 @@ pip install -r requirements.txt
   * TensorDict = 0.6.2
   * pytorch-lightning = 2.5.0 
   * PyVRP = 0.11.0
+  * Numpy = 2.2.6
+  * Pandas
+  * tqdm
   
 
 ## Quickstart
@@ -23,7 +26,7 @@ python generate_datasets.py
 ### Test
 * Test a specific random dataset
 ```bash
-python test.py --problem tsptw --problem_size 50 --hardness hard
+python driver/test.py --problem tsptw --problem_size 50 --hardness hard
 ```
 If not provided, `test_path`, `checkpoint` and `ref_sol_path` will be automatically inferred from `problem`, `problem_size` and `hardness`. 
 You can also provide additional parameters
@@ -57,7 +60,7 @@ options:
 ```
 * Test all datasets
 ```bash
-python driver/test_all
+python driver/test_all.py
 ```
 The results will be saved to `results/main_results.csv`.
 
