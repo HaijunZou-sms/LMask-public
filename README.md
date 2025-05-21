@@ -1,4 +1,9 @@
 # LMask
+<details>
+    <summary><strong>Overview</strong></summary>
+<p align="center"><img src="./assets/LMask.png" width=95%></p>
+</details>
+
 ## Installation
 We  recommend installing the environment from the file by running the following commands
 ```bash
@@ -136,3 +141,8 @@ You can download pretrained models here: https://anonymous.4open.science/r/LMask
 |  | PIP-D | 4.16% | 0.82% | 13.79 | 5.68% | 8s | 13.51% | 8.43% | 22.90 | 12.57% | 23s |
 |  | LMask | **0.19%** | **0.04%** | **13.57** | **2.52%** | 6s | **0.80%** | **0.26%** | **21.63** | **4.34%** | 15s |
 
+### Ablation on the combination of backtracking and overestimation initialization strategies
+<p float="left">
+  <img src="assets/bt_mask_comb_gap.png" width="48%" />
+  <img src="assets/bt_mask_comb_sol_infeas.png" width="48%" />
+</p>
