@@ -84,8 +84,8 @@ You may change the experiment `experiment=main/tsptw/tsptw50-medium` by using th
 **Note**: After training, to use the checkpoints in test.py, you should first run the script `sripts/transform_checkpoints.py` to convert ckpt files to pth files.
 
 
-### Pre-trained Models
-You can download pretrained models here: https://anonymous.4open.science/r/LMask-public-1C7F
+### Datasets and Pre-trained Models
+You can download datasets and pretrained models here: https://anonymous.4open.science/r/LMask-public-1C7F.
 
 
 ## Main Results
@@ -95,7 +95,7 @@ You can download pretrained models here: https://anonymous.4open.science/r/LMask
 | **Nodes** | **Method** | **n=50** |  |  |  |  | **n=100** |  |  |  |  |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |  |  | **Infeasible** |  | **Obj.** | **Gap** | **Time** | **Infeasible** |  | **Obj.** | **Gap** | **Time** |
-|  |  | **Sol.** | **Inst.** |  |  |  | **Sol.** | **Inst.** |  |  |  |
+|  |  | **Sol.** | **Ins.** |  |  |  | **Sol.** | **Ins.** |  |  |  |
 | Easy | PyVRP | - | 0.00% | 7.31 | * | 1.7h | - | 0.00% | 10.19 | * | 4.3h |
 |  | LKH3 | - | 0.00% | 7.31 | 0.00% | 1.9h | - | 0.00% | 10.21 | 0.29% | 7.2h |
 |  | OR-Tools | - | 0.00% | 7.32 | 0.21% | 1.7h | - | 0.00% | 10.33 | 1.43% | 4.3h |
@@ -127,7 +127,7 @@ You can download pretrained models here: https://anonymous.4open.science/r/LMask
 | **Nodes** | **Method** | **n=50** |  |  |  |  | **n=100** |  |  |  |  |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |  |  | **Infeasible** |  | **Obj.** | **Gap** | **Time** | **Infeasible** |  | **Obj.** | **Gap** | **Time** |
-|  |  | **Sol.** | **Inst.** |  |  |  | **Sol.** | **Inst.** |  |  |  |
+|  |  | **Sol.** | **Ins.** |  |  |  | **Sol.** | **Ins.** |  |  |  |
 | Medium | LKH | - | 0.00% | 10.85 | * | 2.3h | - | 0.00% | 16.36 | * | 10.2h |
 |  | Greedy-L | 99.87% | 99.87% | 15.34 | 65.93% | ≪1s | 100.00% | 100.00% | - | - | ≪1s |
 |  | Greedy-C | 0.00% | 0.00% | 26.12 | 144.33% | ≪1s | 0.00% | 0.00% | 52.14 | 222.79% | ≪1s |
