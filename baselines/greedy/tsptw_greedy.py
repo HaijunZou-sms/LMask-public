@@ -11,32 +11,6 @@ from rl4co.utils.ops import get_distance, gather_by_index
 
 from lmask.utils.ops import get_tour_length
 
-
-def get_tspdl_action_mask(td, look_ahead_step=2, round_error_epsilon=1e-5):
-    if look_ahead_step == 1:
-        load_on_arrival = td["current_load"].unsqueeze(-1) + td["demand"]
-        meets_draft_limit = load_on_arrival <= (td["draft_limit"] + round_error_epsilon)
-        unvisited = ~td["visited"]
-        can_visit_local = unvisited & meets_draft_limit
-
-        any_draft_limit_viol = (unvisited & ~meets_draft_limit).any(dim=-1, keepdim=True)  # [B, 1]
-        can_visit = torch.where(any_draft_limit_viol, torch.zeros_like(can_visit_local), can_visit_local)
-    elif look_ahead_step == 2:
-        load_succ = td["current_load"].unsqueeze(-1) + td["demand"]  # [B, n+1]
-        load_grandsucc = load_succ.unsqueeze(-1) + td["demand"].unsqueeze(1)  # [B, n+1, n+1]
-
-        succ_feasible = load_succ <= (td["draft_limit"] + round_error_epsilon)  # [B, n+1]
-        grandsucc_feasible = load_grandsucc <= (td["draft_limit"].unsqueeze(1) + round_error_epsilon)  # [B, n+1, n+1]
-
-        eye = torch.eye(td["locs"].size(1), dtype=torch.bool, device=td.device).unsqueeze(0)
-        skip_mask = td["visited"].unsqueeze(1) | eye  # [B, n+1, n+1]
-        grandsucc_check = (grandsucc_feasible | skip_mask).all(dim=-1)
-
-        unvisited = ~td["visited"]
-        can_visit = unvisited & succ_feasible & grandsucc_check  # [B, n+1]
-
-    return can_visit
-
 def get_tsptw_action_mask(td, look_ahead_step=2, round_error_epsilon=1e-5):
     if look_ahead_step == 1:
         curr_node = td["current_node"]
@@ -224,206 +198,19 @@ class TSPTWGreedy:
             device=td.device,
         )
 
-
-class TSPTWLazyMaskGreedy:
-    def __init__(self, max_backtrack_steps=450, greedy_type="nearest", get_mask=True, look_ahead_step=1):
-        self.max_backtrack_steps = max_backtrack_steps
-        self.get_mask = get_mask
-        self.look_ahead_step = look_ahead_step
-        self.round_error_epsilon = 1e-5
-        self.greedy_type = greedy_type
-
-    def _reset(self, td=None, batch_size=None):
-        device = td.device
-        num_locs = td["locs"].size(1)
-        visited = torch.zeros((*batch_size, num_locs), dtype=torch.bool, device=device)
-        visited[:, 0] = True
-        distance_matrix = torch.cdist(td["locs"], td["locs"], p=2, compute_mode="donot_use_mm_for_euclid_dist")
-        td_reset = TensorDict(
-            {
-                "locs": td["locs"],
-                "service_time": td["service_time"],
-                "time_windows": td["time_windows"],
-                "duration_matrix": distance_matrix,
-                "distance_matrix": distance_matrix,
-                "current_time": torch.zeros(*batch_size, dtype=torch.float32, device=device),
-                "current_node": torch.zeros(*batch_size, dtype=torch.int64, device=device),
-                "visited": visited,
-                "backtrack_steps": torch.zeros(*batch_size, dtype=torch.int64, device=device),
-                "step_idx": torch.zeros(*batch_size, dtype=torch.int64, device=device),
-                "time_stack": torch.zeros((*batch_size, num_locs), dtype=torch.float32, device=device),
-                "node_stack": torch.zeros((*batch_size, num_locs), dtype=torch.int64, device=device),
-                "terminated": torch.zeros(*batch_size, dtype=torch.bool, device=device),
-                "truncated": torch.zeros(*batch_size, dtype=torch.bool, device=device),
-                "done": torch.zeros(*batch_size, dtype=torch.bool, device=device),
-                "action": torch.zeros(*batch_size, dtype=torch.int64, device=device),
-            },
-            batch_size=batch_size,
-            device=device,
-        )
-        action_mask = self.get_action_mask(td_reset)
-        mask_stack = torch.zeros((*batch_size, num_locs, num_locs), dtype=torch.bool, device=device)
-        mask_stack[:, 0] = action_mask
-        td_reset.update({"action_mask": action_mask, "mask_stack": mask_stack})
-        return td_reset
-
-    def get_action_mask(self, td):
-        unvisited = ~td["visited"]
-        action_mask = get_tsptw_action_mask(td, look_ahead_step=self.look_ahead_step, round_error_epsilon=self.round_error_epsilon)
-        return unvisited if not self.get_mask else action_mask
-
-    def _get_reward(self, td, actions):
-
-        ordered_locs = torch.cat([td["locs"][:, 0:1], gather_by_index(td["locs"], actions)], dim=1)
-        diff = ordered_locs - ordered_locs.roll(-1, dims=-2)
-        tour_length = diff.norm(dim=-1).sum(-1)
-
-        return -tour_length
-
-    def _step(self, td):
-
-        batch_idx = torch.arange(td["locs"].size(0), device=td.device)
-        curr_node, new_node = td["current_node"], td["action"]
-        curr_loc, new_loc = gather_by_index(td["locs"], curr_node), gather_by_index(td["locs"], new_node)
-
-        travel_time = get_distance(curr_loc, new_loc)
-        arrival_time = td["current_time"] + travel_time
-        tw_early_new = gather_by_index(td["time_windows"][..., 0], new_node)
-        service_time = gather_by_index(td["service_time"], new_node)
-        new_time = torch.max(arrival_time, tw_early_new) + service_time
-
-        visited = td["visited"].scatter_(1, new_node[..., None], True)
-
-        new_step_idx = td["step_idx"] + 1
-        td["done"] = visited.all(dim=-1)
-
-        td["reward"] = torch.zeros_like(td["done"], dtype=torch.float32)
-        td["time_stack"][batch_idx, new_step_idx] = new_time
-        td["node_stack"][batch_idx, new_step_idx] = new_node
-        td.update(
-            {
-                "step_idx": new_step_idx,
-                "visited": visited,
-                "current_time": new_time,
-                "current_node": new_node,
-            }
-        )
-        action_mask = self.get_action_mask(td)
-        td.set("action_mask", action_mask)
-        td["mask_stack"][batch_idx, new_step_idx] = action_mask
-        return td
-
-    def backtrack(self, td):
-        step_idx = td["step_idx"]
-        new_step_idx = step_idx - 1
-
-        batch_idx = torch.arange(td["locs"].size(0), device=td.device)
-        deleted_node = td["node_stack"][batch_idx, step_idx]
-        td["visited"].scatter_(1, deleted_node[..., None], False)
-
-        td["backtrack_steps"] += 1
-        td["truncated"] = td["backtrack_steps"] >= self.max_backtrack_steps
-
-        td["mask_stack"][batch_idx, new_step_idx, deleted_node] = False
-
-        td.update(
-            {
-                "done": td["truncated"],
-                "step_idx": new_step_idx,
-                "action_mask": td["mask_stack"][batch_idx, new_step_idx],  # [B, N+1]
-                "current_time": td["time_stack"][batch_idx, new_step_idx],
-                "current_node": td["node_stack"][batch_idx, new_step_idx],
-            }
-        )
-        return td
-
-    def select_action(self, td):
-        batch_idx = torch.arange(td["locs"].size(0), device=td.device)
-        current_node = td["current_node"]
-        action_mask = td["action_mask"]  # [B, n+1]
-
-        if self.greedy_type == "nearest":
-            d_ij = td["distance_matrix"][batch_idx, current_node, :]
-            d_ij = d_ij.masked_fill(~action_mask, float("inf"))  # [B, n+1]
-            action = d_ij.argmin(dim=-1)  # [B,]
-
-        elif self.greedy_type == "min_resource":
-            tw_late = td["time_windows"][..., 1]
-            tw_late = tw_late.masked_fill(~action_mask, float("inf"))
-            action = tw_late.argmin(dim=-1)
-        else:  # random
-            probs = (~td["action_mask"]).float()
-            probs = probs / probs.sum(dim=-1, keepdim=True)
-            action = torch.multinomial(probs, num_samples=1).squeeze(-1)
-        return action
-
-    def rollout(self, td, device="cuda"):
-        td = td.to(device)
-        td = self._reset(td, batch_size=td.batch_size)
-        batch_size = td["locs"].size(0)
-
-        pbar = tqdm(total=batch_size, desc="Number of finished instances")
-        prev_done = 0
-        while not td["done"].all():
-            curr_done = td["done"].sum().item()
-            if curr_done > prev_done:
-                pbar.update(curr_done - prev_done)
-                prev_done = curr_done
-
-            active = ~td["done"]
-            has_feas = td["action_mask"].any(dim=-1)
-            at_depot = td["step_idx"] == 0
-
-            step_foward_mask = active & has_feas
-            backtrack_mask = active & (~has_feas) & (~at_depot)
-            invalid_mask = active & (~has_feas) & (at_depot)
-
-            if step_foward_mask.any():
-                step_forward_idx = step_foward_mask.nonzero(as_tuple=True)[0]
-                td["action"][step_forward_idx] = self.select_action(td[step_forward_idx])
-                td[step_forward_idx] = self._step(td[step_forward_idx])
-
-            if backtrack_mask.any():
-                backtrack_idx = backtrack_mask.nonzero(as_tuple=True)[0]
-                td[backtrack_idx] = self.backtrack(td[backtrack_idx])
-
-            if invalid_mask.any():
-                invalid_idx = invalid_mask.nonzero(as_tuple=True)[0]
-                td["done"][invalid_idx] = True
-                td["terminated"][invalid_idx] = True
-        pbar.update(batch_size - prev_done)
-        pbar.close()
-        out = self.get_rollout_result(td)
-        return out
-
-    def get_rollout_result(self, td):
-        actions = td["node_stack"][:, 1:]
-        negative_length = self._get_reward(td, actions)
-        sol_feas = td["step_idx"] == (td["locs"].size(1) - 1)
-        return TensorDict(
-            {
-                "actions": actions,
-                "reward": negative_length,
-                "sol_feas": sol_feas,
-            },
-            batch_size=td.batch_size[0],
-            device=td.device,
-        )
-
 if __name__ == "__main__":
     import argparse
     from baselines.greedy_driver import greedy_solver
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", type=int, default=2500)
     parser.add_argument("--data_dir", type=str, default="data/random")
-    parser.add_argument("--problem", type=str, choices=["tspdl", "tsptw"], default="tsptw", help="Problem type")
     parser.add_argument("--problem_size", type=int, default=50, help="Problem size")
     parser.add_argument("--hardness", type=str, choices=["easy", "medium", "hard"], default="hard", help="Problem difficulty")
     parser.add_argument("--greedy_type", type=str, default="nearest")
     parser.add_argument("--get_mask", type=bool, default=True)
 
     args = parser.parse_args()
-    data_dir, problem, problem_size, hardness = args.data_dir, args.problem, args.problem_size, args.hardness
+    data_dir, problem, problem_size, hardness = args.data_dir, "tsptw", args.problem_size, args.hardness
 
     test_path = f"{data_dir}/{problem}/test/{problem}{problem_size}_test_{hardness}_seed2025.npz"
     test_dir = os.path.dirname(test_path)
@@ -431,7 +218,7 @@ if __name__ == "__main__":
     ref_sol_path = os.path.join(test_dir, f"{reference_solver}_{problem_size}_{hardness}.npz")
 
     greedy_solver(
-        problem_name=args.problem,
+        problem_name=problem,
         test_path=test_path,
         ref_sol_path=ref_sol_path,
         batch_size=args.batch_size,

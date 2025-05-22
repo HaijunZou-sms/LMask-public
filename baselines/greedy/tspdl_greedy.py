@@ -7,7 +7,7 @@ import torch
 from tensordict.tensordict import TensorDict
 from rl4co.utils.ops import get_distance, gather_by_index
 
-def get_action_mask(td, look_ahead_step=2, round_error_epsilon=1e-5):
+def get_tspdl_action_mask(td, look_ahead_step=2, round_error_epsilon=1e-5):
     if look_ahead_step == 1:
         load_on_arrival = td["current_load"].unsqueeze(-1) + td["demand"]
         meets_draft_limit = load_on_arrival <= (td["draft_limit"] + round_error_epsilon)
@@ -63,7 +63,7 @@ class TSPDLGreedy:
     def get_action_mask(self, td):
         unvisited = ~td["visited"]
         if self.get_mask:
-            can_visit = get_action_mask(td, look_ahead_step=self.look_ahead_step, round_error_epsilon=self.round_error_epsilon)
+            can_visit = get_tspdl_action_mask(td, look_ahead_step=self.look_ahead_step, round_error_epsilon=self.round_error_epsilon)
             action_mask = torch.where(can_visit.any(-1, keepdim=True), can_visit, unvisited)
         else:
             action_mask = unvisited
@@ -161,7 +161,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", type=int, default=2500)
     parser.add_argument("--data_dir", type=str, default="data/random")
-    parser.add_argument("--problem", type=str, choices=["tspdl", "tsptw"], default="tspdl", help="Problem type")
     parser.add_argument("--problem_size", type=int, choices=[50, 100], default=50, help="Problem size")
     parser.add_argument("--hardness", type=str, choices=["easy", "medium", "hard"], default="hard", help="Problem difficulty")
     parser.add_argument("--greedy_type", type=str, default="nearest")
@@ -169,15 +168,15 @@ if __name__ == "__main__":
     parser.add_argument("--look_ahead_step", type=int, default=2)
 
     args = parser.parse_args()
-    data_dir, problem, problem_size, hardness = args.data_dir, args.problem, args.problem_size, args.hardness
+    data_dir, problem, problem_size, hardness = args.data_dir, "tspdl", args.problem_size, args.hardness
 
     test_path = f"{data_dir}/{problem}/test/{problem}{problem_size}_test_{hardness}_seed2025.npz"
     test_dir = os.path.dirname(test_path)
-    reference_solver = "pyvrp" if problem == "tsptw" else "lkh"
+    reference_solver = "lkh"
     ref_sol_path = os.path.join(test_dir, f"{reference_solver}_{problem_size}_{hardness}.npz")
 
     greedy_solver(
-        problem_name=args.problem,
+        problem_name=problem,
         test_path=test_path,
         ref_sol_path=ref_sol_path,
         batch_size=args.batch_size,

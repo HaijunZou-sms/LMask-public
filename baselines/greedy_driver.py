@@ -11,7 +11,7 @@ from rl4co.data.utils import load_npz_to_tensordict
 from lmask.utils.data_utils import get_dataloader, extract_info_from_path
 from lmask.utils.metric_utils import compute_reward_and_gap_averages
 from lmask.utils.utils import seed_everything
-from baselines.greedy.tsptw_greedy import TSPTWGreedy, TSPTWLazyMaskGreedy
+from baselines.greedy.tsptw_greedy import TSPTWGreedy
 from baselines.greedy.tspdl_greedy import TSPDLGreedy
 
 
